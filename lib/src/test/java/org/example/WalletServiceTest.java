@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -306,6 +307,19 @@ public class WalletServiceTest {
         service.deposit("w1", new BigDecimal("10"));
 
         assertTrue(service.history("nope").isEmpty());
+    }
+
+    @Test
+    void balanceEqualityIsScaleSensitive() {
+        WalletService service = new WalletService();
+
+        service.deposit("w1", new BigDecimal("0.10"));
+        service.deposit("w1", new BigDecimal("0.20"));
+
+        assertEquals(new BigDecimal("0.30"), service.balance("w1"));
+        // same value, different scale: equals() says no, compareTo() says yes
+        assertNotEquals(new BigDecimal("0.3"), service.balance("w1"));
+        assertEquals(0, service.balance("w1").compareTo(new BigDecimal("0.3")));
     }
 
     private Runnable transferLoop(

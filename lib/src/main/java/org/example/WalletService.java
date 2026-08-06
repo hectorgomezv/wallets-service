@@ -1,6 +1,7 @@
 package org.example;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -13,11 +14,13 @@ public class WalletService {
     public void deposit(String walletId, BigDecimal amount) {
         Wallet wallet = getOrCreateWallet(walletId);
         wallet.deposit(amount);
+        record(walletId, null, OperationType.DEPOSIT, amount);
     }
 
     public void withdraw(String walletId, BigDecimal amount) {
         Wallet wallet = getOrCreateWallet(walletId);
         wallet.withdraw(amount);
+        record(walletId, null, OperationType.WITHDRAWAL, amount);
     }
 
     public BigDecimal balance(String walletId) {
@@ -42,6 +45,7 @@ public class WalletService {
             try {
                 from.withdraw(amount);
                 to.deposit(amount);
+                record(fromWalletId, toWalletId, OperationType.TRANSFER, amount);
             } finally {
                 second.lock.unlock();
             }
@@ -59,6 +63,12 @@ public class WalletService {
                         op -> walletId.equals(op.walletId())
                                 || walletId.equals(op.counterpartyWalletId()))
                 .toList();
+    }
+
+    private void record(
+            String walletId, String counterpartyWalletId, OperationType type, BigDecimal amount) {
+        operations.add(
+                new Operation(walletId, counterpartyWalletId, type, amount, Instant.now()));
     }
 
     private Wallet getOrCreateWallet(String walletId) {
