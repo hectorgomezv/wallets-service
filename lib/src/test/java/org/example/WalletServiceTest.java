@@ -1,10 +1,12 @@
 package org.example;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 
 public class WalletServiceTest {
@@ -112,5 +114,44 @@ public class WalletServiceTest {
         assertTrue(service.wallets.containsKey("w1"));
         assertTrue(service.wallets.containsKey("w2"));
         assertEquals(new BigDecimal("10"), service.balance("w2"));
+    }
+
+    @Test
+    void concurrentTransfersInBothDirectionsKeepFundsConsistent() throws InterruptedException {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("1000"));
+        service.deposit("w2", new BigDecimal("1000"));
+        int transfersPerThread = 5_000;
+        CountDownLatch start = new CountDownLatch(1);
+
+        Runnable forward = transferLoop(service, "w1", "w2", transfersPerThread, start);
+        Runnable backward = transferLoop(service, "w2", "w1", transfersPerThread, start);
+
+        Thread t1 = new Thread(forward);
+        Thread t2 = new Thread(backward);
+        t1.start();
+        t2.start();
+        start.countDown();
+        t1.join(30_000);
+        t2.join(30_000);
+
+        assertFalse(t1.isAlive() || t2.isAlive(), "transfer threads did not finish: possible deadlock");
+        assertEquals(new BigDecimal("1000"), service.balance("w1"));
+        assertEquals(new BigDecimal("1000"), service.balance("w2"));
+    }
+
+    private Runnable transferLoop(
+            WalletService service, String from, String to, int times, CountDownLatch start) {
+        return () -> {
+            try {
+                start.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            for (int i = 0; i < times; i++) {
+                service.transfer(from, to, BigDecimal.ONE);
+            }
+        };
     }
 }
