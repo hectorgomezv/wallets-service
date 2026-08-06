@@ -119,9 +119,11 @@ public class WalletServiceTest {
     @Test
     void concurrentTransfersInBothDirectionsKeepFundsConsistent() throws InterruptedException {
         WalletService service = new WalletService();
-        service.deposit("w1", new BigDecimal("1000"));
-        service.deposit("w2", new BigDecimal("1000"));
         int transfersPerThread = 5_000;
+        // fund enough that either thread can run to completion alone
+        BigDecimal funding = new BigDecimal(transfersPerThread);
+        service.deposit("w1", funding);
+        service.deposit("w2", funding);
         CountDownLatch start = new CountDownLatch(1);
 
         Runnable forward = transferLoop(service, "w1", "w2", transfersPerThread, start);
@@ -136,8 +138,47 @@ public class WalletServiceTest {
         t2.join(30_000);
 
         assertFalse(t1.isAlive() || t2.isAlive(), "transfer threads did not finish: possible deadlock");
-        assertEquals(new BigDecimal("1000"), service.balance("w1"));
-        assertEquals(new BigDecimal("1000"), service.balance("w2"));
+        assertEquals(funding, service.balance("w1"));
+        assertEquals(funding, service.balance("w2"));
+    }
+
+    @Test
+    void transferToSameWalletIsRejected() {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("10"));
+
+        assertThrows(
+                IllegalArgumentException.class, () -> service.transfer("w1", "w1", BigDecimal.ONE));
+        assertEquals(new BigDecimal("10"), service.balance("w1"));
+    }
+
+    @Test
+    void ringTransfersOnThreeThreadsKeepFundsConsistent() throws InterruptedException {
+        WalletService service = new WalletService();
+        int transfersPerThread = 2_000;
+        BigDecimal funding = new BigDecimal(transfersPerThread);
+        service.deposit("a", funding);
+        service.deposit("b", funding);
+        service.deposit("c", funding);
+        CountDownLatch start = new CountDownLatch(1);
+
+        Thread ab = new Thread(transferLoop(service, "a", "b", transfersPerThread, start));
+        Thread bc = new Thread(transferLoop(service, "b", "c", transfersPerThread, start));
+        Thread ca = new Thread(transferLoop(service, "c", "a", transfersPerThread, start));
+        ab.start();
+        bc.start();
+        ca.start();
+        start.countDown();
+        ab.join(30_000);
+        bc.join(30_000);
+        ca.join(30_000);
+
+        assertFalse(
+                ab.isAlive() || bc.isAlive() || ca.isAlive(),
+                "transfer threads did not finish: possible deadlock");
+        assertEquals(funding, service.balance("a"));
+        assertEquals(funding, service.balance("b"));
+        assertEquals(funding, service.balance("c"));
     }
 
     private Runnable transferLoop(

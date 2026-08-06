@@ -23,6 +23,9 @@ public class WalletService {
     }
 
     public void transfer(String fromWalletId, String toWalletId, BigDecimal amount) {
+        if (fromWalletId != null && fromWalletId.equals(toWalletId)) {
+            throw new IllegalArgumentException("Cannot transfer to the same wallet");
+        }
         Wallet from = getOrCreateWallet(fromWalletId);
         Wallet to = getOrCreateWallet(toWalletId);
 
