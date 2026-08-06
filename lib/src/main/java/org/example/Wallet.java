@@ -1,45 +1,51 @@
 package org.example;
 
 import java.math.BigDecimal;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Wallet {
     private final String id;
-    private final AtomicReference<BigDecimal> balance;
+    final ReentrantLock lock = new ReentrantLock();
+    private BigDecimal balance;
 
     public Wallet(String id) {
         this.id = id;
-        this.balance = new AtomicReference<>(BigDecimal.ZERO);
+        this.balance = BigDecimal.ZERO;
     }
 
     public BigDecimal getBalance() {
-        return balance.get();
+        lock.lock();
+        try {
+            return balance;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public void deposit(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Deposit amount must be positive");
         }
-        BigDecimal current;
-        BigDecimal updated;
-        do {
-            current = balance.get();
-            updated = current.add(amount);
-        } while (!balance.compareAndSet(current, updated));
+        lock.lock();
+        try {
+            balance = balance.add(amount);
+        } finally {
+            lock.unlock();
+        }
     }
 
     public void withdraw(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Withdraw amount must be positive");
         }
-        BigDecimal current;
-        BigDecimal updated;
-        do {
-            current = balance.get();
-            if (current.compareTo(amount) < 0) {
+        lock.lock();
+        try {
+            if (balance.compareTo(amount) < 0) {
                 throw new IllegalStateException("Insufficient funds");
             }
-            updated = current.subtract(amount);
-        } while (!balance.compareAndSet(current, updated));
+            balance = balance.subtract(amount);
+        } finally {
+            lock.unlock();
+        }
     }
 }

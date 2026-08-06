@@ -26,8 +26,22 @@ public class WalletService {
         Wallet from = getOrCreateWallet(fromWalletId);
         Wallet to = getOrCreateWallet(toWalletId);
 
-        from.withdraw(amount);
-        to.deposit(amount);
+        // lock in id order so two opposite transfers cannot deadlock
+        Wallet first = fromWalletId.compareTo(toWalletId) <= 0 ? from : to;
+        Wallet second = first == from ? to : from;
+
+        first.lock.lock();
+        try {
+            second.lock.lock();
+            try {
+                from.withdraw(amount);
+                to.deposit(amount);
+            } finally {
+                second.lock.unlock();
+            }
+        } finally {
+            first.lock.unlock();
+        }
     }
 
     private Wallet getOrCreateWallet(String walletId) {
