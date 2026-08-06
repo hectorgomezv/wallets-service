@@ -75,4 +75,73 @@ public class WalletTest {
         assertEquals(new BigDecimal(2 * depositsPerThread), wallet.getBalance());
     }
 
+    @Test
+    void withdrawDecreasesBalance() {
+        Wallet wallet = new Wallet("w1");
+        wallet.deposit(new BigDecimal("10.50"));
+
+        wallet.withdraw(new BigDecimal("4.50"));
+
+        assertEquals(new BigDecimal("6.00"), wallet.getBalance());
+    }
+
+    @Test
+    void withdrawRejectsAmountAboveBalance() {
+        Wallet wallet = new Wallet("w1");
+        wallet.deposit(new BigDecimal("10"));
+
+        assertThrows(IllegalStateException.class, () -> wallet.withdraw(new BigDecimal("10.01")));
+        assertEquals(new BigDecimal("10"), wallet.getBalance());
+    }
+
+    @Test
+    void withdrawRejectsNullAmount() {
+        Wallet wallet = new Wallet("w1");
+
+        assertThrows(IllegalArgumentException.class, () -> wallet.withdraw(null));
+    }
+
+    @Test
+    void withdrawRejectsZeroAmount() {
+        Wallet wallet = new Wallet("w1");
+
+        assertThrows(IllegalArgumentException.class, () -> wallet.withdraw(BigDecimal.ZERO));
+    }
+
+    @Test
+    void withdrawRejectsNegativeAmount() {
+        Wallet wallet = new Wallet("w1");
+
+        assertThrows(IllegalArgumentException.class, () -> wallet.withdraw(new BigDecimal("-1")));
+    }
+
+    @Test
+    void concurrentWithdrawalsFromTwoThreadsAreConsistent() throws InterruptedException {
+        Wallet wallet = new Wallet("w1");
+        int withdrawalsPerThread = 10_000;
+        wallet.deposit(new BigDecimal(2 * withdrawalsPerThread));
+        CountDownLatch start = new CountDownLatch(1);
+
+        Runnable withdrawer = () -> {
+            try {
+                start.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            for (int i = 0; i < withdrawalsPerThread; i++) {
+                wallet.withdraw(BigDecimal.ONE);
+            }
+        };
+
+        Thread t1 = new Thread(withdrawer);
+        Thread t2 = new Thread(withdrawer);
+        t1.start();
+        t2.start();
+        start.countDown();
+        t1.join();
+        t2.join();
+
+        assertEquals(BigDecimal.ZERO, wallet.getBalance());
+    }
 }
