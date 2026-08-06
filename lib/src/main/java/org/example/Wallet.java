@@ -27,4 +27,19 @@ public class Wallet {
             updated = current.add(amount);
         } while (!balance.compareAndSet(current, updated));
     }
+
+    public void withdraw(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Withdraw amount must be positive");
+        }
+        BigDecimal current;
+        BigDecimal updated;
+        do {
+            current = balance.get();
+            if (current.compareTo(amount) < 0) {
+                throw new IllegalStateException("Insufficient funds");
+            }
+            updated = current.subtract(amount);
+        } while (!balance.compareAndSet(current, updated));
+    }
 }
