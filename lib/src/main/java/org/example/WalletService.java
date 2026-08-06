@@ -22,6 +22,14 @@ public class WalletService {
         return wallet.getBalance();
     }
 
+    public void transfer(String fromWalletId, String toWalletId, BigDecimal amount) {
+        Wallet from = getOrCreateWallet(fromWalletId);
+        Wallet to = getOrCreateWallet(toWalletId);
+
+        from.withdraw(amount);
+        to.deposit(amount);
+    }
+
     private Wallet getOrCreateWallet(String walletId) {
         if (walletId == null) {
             throw new IllegalArgumentException("Wallet id must not be null");
