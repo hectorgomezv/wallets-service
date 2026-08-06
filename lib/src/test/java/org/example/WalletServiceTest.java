@@ -5,7 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 
@@ -179,6 +183,129 @@ public class WalletServiceTest {
         assertEquals(funding, service.balance("a"));
         assertEquals(funding, service.balance("b"));
         assertEquals(funding, service.balance("c"));
+    }
+
+    @Test
+    void depositIsRecorded() {
+        WalletService service = new WalletService();
+
+        service.deposit("w1", new BigDecimal("10"));
+
+        List<Operation> log = List.copyOf(service.operations);
+        assertEquals(1, log.size());
+        Operation op = log.get(0);
+        assertEquals("w1", op.walletId());
+        assertNull(op.counterpartyWalletId());
+        assertEquals(OperationType.DEPOSIT, op.type());
+        assertEquals(new BigDecimal("10"), op.amount());
+        assertNotNull(op.timestamp());
+    }
+
+    @Test
+    void withdrawIsRecorded() {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("10"));
+
+        service.withdraw("w1", new BigDecimal("4"));
+
+        List<Operation> log = List.copyOf(service.operations);
+        assertEquals(2, log.size());
+        Operation op = log.get(1);
+        assertEquals("w1", op.walletId());
+        assertNull(op.counterpartyWalletId());
+        assertEquals(OperationType.WITHDRAWAL, op.type());
+        assertEquals(new BigDecimal("4"), op.amount());
+    }
+
+    @Test
+    void transferIsRecorded() {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("10"));
+
+        service.transfer("w1", "w2", new BigDecimal("4"));
+
+        List<Operation> log = List.copyOf(service.operations);
+        assertEquals(2, log.size());
+        Operation op = log.get(1);
+        assertEquals("w1", op.walletId());
+        assertEquals("w2", op.counterpartyWalletId());
+        assertEquals(OperationType.TRANSFER, op.type());
+        assertEquals(new BigDecimal("4"), op.amount());
+    }
+
+    @Test
+    void operationsAreRecordedInOrder() {
+        WalletService service = new WalletService();
+
+        service.deposit("w1", new BigDecimal("10"));
+        service.withdraw("w1", new BigDecimal("4"));
+        service.transfer("w1", "w2", new BigDecimal("2"));
+        service.deposit("w2", new BigDecimal("7"));
+
+        List<Operation> log = List.copyOf(service.operations);
+        assertEquals(4, log.size());
+        assertEquals(
+                List.of(
+                        OperationType.DEPOSIT,
+                        OperationType.WITHDRAWAL,
+                        OperationType.TRANSFER,
+                        OperationType.DEPOSIT),
+                log.stream().map(Operation::type).toList());
+        assertEquals(
+                List.of(
+                        new BigDecimal("10"),
+                        new BigDecimal("4"),
+                        new BigDecimal("2"),
+                        new BigDecimal("7")),
+                log.stream().map(Operation::amount).toList());
+    }
+
+    @Test
+    void failedOperationsAreNotRecorded() {
+        WalletService service = new WalletService();
+
+        assertThrows(
+                IllegalStateException.class, () -> service.withdraw("w1", new BigDecimal("1")));
+        assertThrows(IllegalArgumentException.class, () -> service.deposit("w1", BigDecimal.ZERO));
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.transfer("w1", "w2", new BigDecimal("1")));
+
+        assertTrue(service.operations.isEmpty());
+    }
+
+    @Test
+    void historyRejectsNullWalletId() {
+        WalletService service = new WalletService();
+
+        assertThrows(IllegalArgumentException.class, () -> service.history(null));
+    }
+
+    @Test
+    void historyReturnsOperationsForOwnAndCounterpartySide() {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("10"));
+        service.transfer("w1", "w2", new BigDecimal("4"));
+        service.deposit("w3", new BigDecimal("5"));
+
+        List<Operation> w1History = service.history("w1");
+        assertEquals(2, w1History.size());
+        assertEquals(OperationType.DEPOSIT, w1History.get(0).type());
+        assertEquals(OperationType.TRANSFER, w1History.get(1).type());
+
+        // w2 only appears as the counterparty of the transfer
+        List<Operation> w2History = service.history("w2");
+        assertEquals(1, w2History.size());
+        assertEquals(OperationType.TRANSFER, w2History.get(0).type());
+        assertEquals("w1", w2History.get(0).walletId());
+    }
+
+    @Test
+    void historyIsEmptyForUnknownWallet() {
+        WalletService service = new WalletService();
+        service.deposit("w1", new BigDecimal("10"));
+
+        assertTrue(service.history("nope").isEmpty());
     }
 
     private Runnable transferLoop(

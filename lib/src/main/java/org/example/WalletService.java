@@ -1,11 +1,14 @@
 package org.example;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class WalletService {
 
     final ConcurrentHashMap<String, Wallet> wallets = new ConcurrentHashMap<>();
+    final ConcurrentLinkedQueue<Operation> operations = new ConcurrentLinkedQueue<>();
 
     public void deposit(String walletId, BigDecimal amount) {
         Wallet wallet = getOrCreateWallet(walletId);
@@ -47,10 +50,22 @@ public class WalletService {
         }
     }
 
+    public List<Operation> history(String walletId) {
+        if (walletId == null) {
+            throw new IllegalArgumentException("Wallet id must not be null");
+        }
+        return operations.stream()
+                .filter(
+                        op -> walletId.equals(op.walletId())
+                                || walletId.equals(op.counterpartyWalletId()))
+                .toList();
+    }
+
     private Wallet getOrCreateWallet(String walletId) {
         if (walletId == null) {
             throw new IllegalArgumentException("Wallet id must not be null");
         }
         return wallets.computeIfAbsent(walletId, Wallet::new);
     }
-}
+} 
+                                
